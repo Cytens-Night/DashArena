@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dash Arena</title>
+  <!-- Google Font for a futuristic look -->
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="startContainer">
+    <h1>Dash Arena</h1>
+    <p>Best Score: <span id="bestScore">0s</span></p>
+    <p>Enter your name to start</p>
+    <input type="text" id="username" placeholder="Your name">
+    <button onclick="showAdAndStart()">Play</button>
+  </div>
+  <canvas id="gameCanvas" width="800" height="500"></canvas>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>

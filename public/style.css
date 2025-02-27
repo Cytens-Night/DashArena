@@ -1,0 +1,63 @@
+/* style.css */
+body {
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    background: radial-gradient(circle, #1a1a1a, #000000);
+    color: #fff;
+    font-family: 'Orbitron', sans-serif;
+    text-align: center;
+  }
+  
+  #startContainer {
+    margin-bottom: 20px;
+  }
+  
+  #startContainer h1 {
+    font-size: 48px;
+    color: #00ff99;
+    text-shadow: 0 0 10px #00ff99;
+    margin-bottom: 10px;
+  }
+  
+  #startContainer p {
+    font-size: 18px;
+    margin-bottom: 10px;
+  }
+  
+  #username {
+    padding: 10px;
+    font-size: 16px;
+    border: none;
+    border-radius: 5px;
+    outline: none;
+    margin-bottom: 20px;
+    width: 250px;
+    text-align: center;
+  }
+  
+  button {
+    padding: 10px 20px;
+    font-size: 16px;
+    background: #00ff99;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+  }
+  
+  button:hover {
+    background: #00cc88;
+  }
+  
+  #gameCanvas {
+    display: none;
+    border: 2px solid #00ff99;
+    background: #000;
+    box-shadow: 0 0 20px #00ff99;
+  }
+  

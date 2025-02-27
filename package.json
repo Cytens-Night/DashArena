@@ -1,0 +1,16 @@
+{
+  "name": "dasharena",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "Cytens",
+  "license": "ISC",
+  "description": "A game that takes you by surprise",
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  }
+}
