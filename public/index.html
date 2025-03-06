@@ -16,6 +16,7 @@
     <input type="text" id="username" placeholder="Your name">
     <button onclick="showAdAndStart()">Play</button>
   </div>
+  <button id="pauseBtn" onclick="togglePause()" style="display:none;">Pause</button>
   <canvas id="gameCanvas" width="800" height="500"></canvas>
   <script src="/socket.io/socket.io.js"></script>
   <script src="game.js"></script>

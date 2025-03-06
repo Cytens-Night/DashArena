@@ -4,10 +4,10 @@ body {
     padding: 0;
     height: 100vh;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    flex-direction: column;
-    background: radial-gradient(circle, #1a1a1a, #000000);
+    background: radial-gradient(circle, #001133, #000000);
     color: #fff;
     font-family: 'Orbitron', sans-serif;
     text-align: center;
@@ -48,6 +48,7 @@ body {
     border-radius: 5px;
     cursor: pointer;
     transition: background 0.3s ease;
+    margin: 5px;
   }
   
   button:hover {
@@ -59,5 +60,12 @@ body {
     border: 2px solid #00ff99;
     background: #000;
     box-shadow: 0 0 20px #00ff99;
+  }
+  
+  #pauseBtn {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 10;
   }
   
