@@ -6,13 +6,12 @@ const ctx = canvas.getContext("2d");
 let username;
 let players = {};
 let fallingWalls = [];
-let fallingPowerUps = [];
-let enemies = [];
+let foodItems = [];
+let bots = [];
 let bullets = [];
 let paused = false;
 
 const BULLET_RADIUS = 5;
-const BULLET_SPEED = 6;
 const pauseBtn = document.getElementById("pauseBtn");
 
 function showAdAndStart() {
@@ -38,8 +37,8 @@ function togglePause() {
 // **Socket Event Listeners**
 socket.on("updatePlayers", (serverPlayers) => { players = serverPlayers; });
 socket.on("updateWalls", (serverWalls) => { fallingWalls = serverWalls; });
-socket.on("updatePowerUps", (serverPowerUps) => { fallingPowerUps = serverPowerUps; });
-socket.on("updateEnemies", (serverEnemies) => { enemies = serverEnemies; });
+socket.on("updateFood", (serverFood) => { foodItems = serverFood; });
+socket.on("updateBots", (serverBots) => { bots = serverBots; });
 socket.on("updateBullets", (serverBullets) => { bullets = serverBullets; });
 
 socket.on("knockedOut", (survivalTime) => {
@@ -93,10 +92,14 @@ canvas.addEventListener("mousedown", (e) => {
 function shootBullet(event) {
   const player = players[socket.id];
   if (player) {
-    let angle = Math.atan2(event.clientY - player.y, event.clientX - player.x);
-    socket.emit("shoot", { x: player.x, y: player.y, angle });
+      let rect = canvas.getBoundingClientRect();
+      let x = event.clientX - rect.left;
+      let y = event.clientY - rect.top;
+      let angle = Math.atan2(y - player.y, x - player.x);
+      socket.emit("shoot", { x: player.x, y: player.y, angle });
   }
 }
+
 
 // **Game Loop**
 function animate() {
@@ -109,28 +112,34 @@ function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawGrid();
   drawWalls();
-  drawPowerUps();
-  drawEnemies();
+  drawFood();
+  drawBots();
   drawBullets();
   drawPlayers();
 }
 
-// **✅ Fix for Walls (Maze) Not Showing**
+// **Draw Walls**
 function drawWalls() {
   fallingWalls.forEach(wall => {
-    ctx.fillStyle = wall.color || "#fff";  // Default color if undefined
+    ctx.fillStyle = wall.color;
     ctx.fillRect(0, wall.y, wall.gapX, wall.thickness);
     ctx.fillRect(wall.gapX + wall.gapWidth, wall.y, canvas.width - (wall.gapX + wall.gapWidth), wall.thickness);
   });
 }
 
-// **✅ Reduced Enemy Spawn Frequency**
-function drawEnemies() {
-  enemies.forEach((enemy, index) => {
-    if (index % 2 === 0) {  // Only render every other enemy to reduce frequency
-      ctx.fillStyle = "red";
-      ctx.fillRect(enemy.x - enemy.size / 2, enemy.y - enemy.size / 2, enemy.size, enemy.size);
-    }
+// **Draw Food Items**
+function drawFood() {
+  foodItems.forEach(food => {
+    ctx.fillStyle = "green";
+    ctx.fillRect(food.x - food.size / 2, food.y - food.size / 2, food.size, food.size);
+  });
+}
+
+// **Draw Bots (Chasing Enemies)**
+function drawBots() {
+  bots.forEach(bot => {
+    ctx.fillStyle = "orange";
+    ctx.fillRect(bot.x - bot.size / 2, bot.y - bot.size / 2, bot.size, bot.size);
   });
 }
 
@@ -140,16 +149,6 @@ function drawBullets() {
     ctx.beginPath();
     ctx.arc(bullet.x, bullet.y, BULLET_RADIUS, 0, 2 * Math.PI);
     ctx.fillStyle = "#00BFFF";
-    ctx.fill();
-  });
-}
-
-// **Draw Power-Ups**
-function drawPowerUps() {
-  fallingPowerUps.forEach(pu => {
-    ctx.fillStyle = pu.type === "slow" ? "#00BFFF" : pu.type === "invis" ? "#9370DB" : "#32CD32";
-    ctx.beginPath();
-    ctx.arc(pu.x, pu.y, pu.radius, 0, 2 * Math.PI);
     ctx.fill();
   });
 }
@@ -187,13 +186,4 @@ function drawGrid() {
     ctx.lineTo(canvas.width, y);
     ctx.stroke();
   }
-}
-
-// **Draw Scoreboard**
-function drawScoreboard() {
-  ctx.fillStyle = "rgba(0,0,0,0.5)";
-  ctx.fillRect(canvas.width - 150, 10, 140, 100);
-  ctx.font = "14px Orbitron";
-  ctx.fillStyle = "#00ff99";
-  ctx.fillText("Leaderboard", canvas.width - 140, 30);
 }
