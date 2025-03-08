@@ -1,29 +1,127 @@
+/**********************
+ * 1) INITIAL SETUP
+ **********************/
 const socket = io();
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
+const pauseBtn = document.getElementById("pauseBtn");
 
+/**********************
+ * 2) GLOBAL VARIABLES
+ **********************/
 let players = {};
 let mazeWalls = [];
 let foodItems = [];
 let bots = [];
 let bullets = [];
+let coins = []; // Ensure coins is defined
 let survivalTime = 0;
 let paused = false;
-let gameSpeedMultiplier = 1; // 🔴 Default speed multiplier
+let gameSpeedMultiplier = 1;
+let currentFrame = 0; 
+let frameTick = 0;
+const frameSpeed = 6; // Animation speed
+const BULLET_RADIUS = 5;
+let keys = { up: false, down: false, left: false, right: false }; // Player movement
 
+/**********************
+ * 3) BACKGROUND
+ **********************/
+const background = new Image();
+background.src = "/Assets/Game_Background.png";
+background.onload = () => {
+  console.log("✅ Background Loaded!");
+};
 
+/**********************
+ * 4) IMAGES & ANIMATIONS
+ **********************/
+// Existing images
+const images = {
+  idle: new Image(),
+  crouching: new Image(),
+  flying: new Image(),
+  facingLeft: new Image(),
+  facingRight: new Image(),
+  shooting: new Image(),
+};
+images.idle.src = "/Assets/Facing Right.png";  // Default
+images.crouching.src = "/Assets/Crouching.png";
+images.flying.src = "/Assets/Flying.png";
+images.facingLeft.src = "/Assets/Facing Left.png";
+images.facingRight.src = "/Assets/Facing Right.png";
+images.shooting.src = "/Assets/Shooting.png";
+
+// Bullet images
+const bulletImages = {
+  left: new Image(),
+  right: new Image(),
+  up: new Image(),
+  down: new Image(),
+};
+bulletImages.left.src = "/Assets/Knive_Left.png";
+bulletImages.right.src = "/Assets/Knive_right.png";
+bulletImages.up.src = "/Assets/Knive_Up.png";
+bulletImages.down.src = "/Assets/Knive_Down.png";
+
+// New: Dragon for bots
+const dragonImg = new Image();
+dragonImg.src = "/Assets/Dragon_Attacking.png";
+
+// New: Egg images to replace coins
+const egg1 = new Image();
+egg1.src = "/Assets/Fall_Dragon_Egg_1.png";
+const egg2 = new Image();
+egg2.src = "/Assets/Fall_Dragon_Egg_2.png";
+
+// New: planet/wall images to replace red squares
+const planet1 = new Image();
+planet1.src = "/Assets/Random_Planet_1.png";
+const planet2 = new Image();
+planet2.src = "/Assets/Random_Planet_2.png";
+const wall1 = new Image();
+wall1.src = "/Assets/Random_Wall_1.png";
+const wall2 = new Image();
+wall2.src = "/Assets/Random_Wall_2.png";
+const wall3 = new Image();
+wall3.src = "/Assets/Random_Wall_3.png";
+
+// Animations object AFTER images are defined
+const animations = {
+  idle: { frames: 1, image: images.idle },
+  crouching: { frames: 1, image: images.crouching },
+  flying: { frames: 1, image: images.flying },
+  facingLeft: { frames: 1, image: images.facingLeft },
+  facingRight: { frames: 1, image: images.facingRight },
+  shooting: { frames: 1, image: images.shooting },
+};
+let currentAnimation = "idle"; // default
+
+/**********************
+ * 5) TIMERS & INTERVALS
+ **********************/
+// Survival time increments every second if not paused
 setInterval(() => {
   if (!paused) {
-      survivalTime += 1; // 🔴 Increase time every second
+    survivalTime += 1;
   }
 }, 1000);
 
-const BULLET_RADIUS = 5;
-const pauseBtn = document.getElementById("pauseBtn");
+// Debugging info in console every 2 seconds
+setInterval(() => {
+  console.clear();
+  console.log("Players:", players);
+  console.log("Walls:", mazeWalls);
+  console.log("Food:", foodItems);
+  console.log("Bots:", bots);
+  console.log("Bullets:", bullets);
+}, 2000);
 
-// **Receive Game Updates from Server**
+/**********************
+ * 6) SOCKET.IO EVENTS
+ **********************/
+// 6A) Update Game
 socket.on("updateGame", (data) => {
-  console.log("🔵 Received Game Update:", data); // Debugging
   players = data.players || {};
   mazeWalls = data.mazeWalls || [];
   foodItems = data.foodItems || [];
@@ -32,234 +130,272 @@ socket.on("updateGame", (data) => {
   coins = data.coins || [];
   gameSpeedMultiplier = data.gameSpeedMultiplier || 1;
 
+  // Optionally ensure local player defaults
   let player = players[socket.id];
   if (player) {
-      player.coinsCollected = player.coinsCollected || 0; // ✅ Ensure coinsCollected exists
+    player.x = player.x || canvas.width / 2;
+    player.y = player.y || canvas.height - 50;
+    player.coinsCollected = player.coinsCollected || 0;
   }
 });
 
-
-socket.on("knockedOut", (time) => {
-  alert(`💀 Game Over! You survived for ${Math.floor(time / 1000)} seconds.`);
-  window.location.reload();
+// 6B) Bullet Updates
+socket.on("updateBullets", (serverBullets) => {
+  bullets = serverBullets;
 });
+
+// 6C) Coin Updates
 socket.on("updateCoins", (serverCoins) => {
   coins = serverCoins;
 });
 
-function drawCoins() {
-  coins.forEach(coin => {
-      ctx.font = "20px Arial";
-      ctx.textAlign = "center";
-      ctx.fillText("🪙", coin.x, coin.y);
-  });
-}
+// 6D) Knocked Out -> Reload
+socket.on("knockedOut", (time) => {
+  alert(`💀 Game Over! You survived for ${Math.floor(time / 1000)} seconds.`);
+  window.location.reload();
+});
 
-// **Show Debugging Info in Console**
-setInterval(() => {
-    console.clear();
-    console.log("Players:", players);
-    console.log("Walls:", mazeWalls);
-    console.log("Food:", foodItems);
-    console.log("Bots:", bots);
-    console.log("Bullets:", bullets);
-
-}, 2000);
-
-// **Start Game**
+/**********************
+ * 7) START & PAUSE
+ **********************/
+// Show Ad & Start
 function showAdAndStart() {
-    const nameInput = document.getElementById("username");
-    const user = nameInput ? nameInput.value : "";
-    if (!user) {
-        alert("Please enter a name!");
-        return;
-    }
-    username = user;
-    document.getElementById("startContainer").style.display = "none";
-    canvas.style.display = "block";
-    pauseBtn.style.display = "block";
-    socket.emit("newPlayer", username);
-    animate();
+  const nameInput = document.getElementById("username");
+  const user = nameInput ? nameInput.value : "";
+  if (!user) {
+    alert("Please enter a name!");
+    return;
+  }
+  username = user;
+  document.getElementById("startContainer").style.display = "none";
+  canvas.style.display = "block";
+  pauseBtn.style.display = "block";
+  socket.emit("newPlayer", username);
+  animate();
 }
 
-// **Pause Button Toggle**
+// Toggle Pause
 function togglePause() {
-    paused = !paused;
-    pauseBtn.textContent = paused ? "Resume" : "Pause";
+  paused = !paused;
+  pauseBtn.textContent = paused ? "Resume" : "Pause";
 }
 
-// **Player Movement Controls**
-let keys = { up: false, down: false, left: false, right: false };
-
+/**********************
+ * 8) PLAYER MOVEMENT
+ **********************/
+// Keydown
 window.addEventListener("keydown", (e) => {
-  if (!e || !e.key) return; // Prevents undefined error
-  const key = e.key.toLowerCase(); // Ensures it's a valid string
+  if (!e || !e.key) return;
+  const key = e.key.toLowerCase();
 
   switch (key) {
-      case "arrowup": case "w": keys.up = true; break;
-      case "arrowdown": case "s": keys.down = true; break;
-      case "arrowleft": case "a": keys.left = true; break;
-      case "arrowright": case "d": keys.right = true; break;
+    case "arrowup": case "w": keys.up = true; break;
+    case "arrowdown": case "s": keys.down = true; break;
+    case "arrowleft": case "a": keys.left = true; break;
+    case "arrowright": case "d": keys.right = true; break;
   }
 });
 
+// Keyup
 window.addEventListener("keyup", (e) => {
-  if (!e || !e.key) return; // Prevents undefined error
-  const key = e.key.toLowerCase(); // Ensures it's a valid string
+  if (!e || !e.key) return;
+  const key = e.key.toLowerCase();
 
   switch (key) {
-      case "arrowup": case "w": keys.up = false; break;
-      case "arrowdown": case "s": keys.down = false; break;
-      case "arrowleft": case "a": keys.left = false; break;
-      case "arrowright": case "d": keys.right = false; break;
+    case "arrowup": case "w": keys.up = false; break;
+    case "arrowdown": case "s": keys.down = false; break;
+    case "arrowleft": case "a": keys.left = false; break;
+    case "arrowright": case "d": keys.right = false; break;
   }
 });
 
-
-// **Send Movement Data**
+// Send movement data every frame
 setInterval(() => {
-    if (!paused) {
-        let dx = 0, dy = 0;
-        if (keys.up) dy = -1;
-        if (keys.down) dy = 1;
-        if (keys.left) dx = -1;
-        if (keys.right) dx = 1;
-        socket.emit("move", { dx, dy });
-    }
+  if (!paused) {
+    let dx = 0, dy = 0;
+    if (keys.up) dy = -1;
+    if (keys.down) dy = 1;
+    if (keys.left) dx = -1;
+    if (keys.right) dx = 1;
+    socket.emit("move", { dx, dy });
+  }
 }, 1000 / 60);
 
-// **Shooting Mechanic**
+/**********************
+ * 9) SHOOTING
+ **********************/
 canvas.addEventListener("mousedown", (e) => {
-    if (e.button === 0) { 
-        shootBullet(e);
-    }
+  if (e.button === 0) { // left click
+    shootBullet(e);
+  }
 });
 
 function shootBullet(event) {
-    const player = players[socket.id];
-    if (player) {
-        let rect = canvas.getBoundingClientRect();
-        let mouseX = event.clientX - rect.left;
-        let mouseY = event.clientY - rect.top;
+  const player = players[socket.id];
+  if (!player) return;
 
-        let angle = Math.atan2(mouseY - player.y, mouseX - player.x);
-        socket.emit("shoot", { x: player.x, y: player.y, angle });
-    }
+  let rect = canvas.getBoundingClientRect();
+  let mouseX = event.clientX - rect.left;
+  let mouseY = event.clientY - rect.top;
+
+  // Calculate dx, dy
+  let angle = Math.atan2(mouseY - player.y, mouseX - player.x);
+  let dx = Math.cos(angle) * 5; 
+  let dy = Math.sin(angle) * 5;
+
+  // Send dx, dy to server
+  socket.emit("shoot", { x: player.x, y: player.y, dx, dy });
 }
 
-// **Rendering Functions**
+/**********************
+ * 10) DRAW FUNCTIONS
+ **********************/
 function draw() {
+  // Clear & draw background
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  drawGrid();
+  ctx.drawImage(background, 0, 0, canvas.width, canvas.height);
+
+  // Then draw everything else
   drawMaze();
   drawFood();
   drawBots();
   drawBullets();
-  drawCoins(); // 🔴 Draw the falling coins
+  drawCoins();
   drawPlayers();
   drawScoreboard();
 }
 
-// **Draw Grid Background**
-function drawGrid() {
-    const gridSize = 20;
-    ctx.strokeStyle = "rgba(255,255,255,0.1)";
-    for (let x = 0; x < canvas.width; x += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, canvas.height);
-        ctx.stroke();
-    }
-    for (let y = 0; y < canvas.height; y += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(canvas.width, y);
-        ctx.stroke();
-    }
-}
-
-// **Draw Walls (Maze)**
+// Maze
 function drawMaze() {
   mazeWalls.forEach(wall => {
-      if (!wall) return;  // ✅ Prevents errors
+    if (!wall) return;
 
-      ctx.fillStyle = "#8B0000";
-      ctx.fillRect(wall.x, wall.y, wall.width, wall.height);
+    // 🔴 We no longer randomize each frame.
+    // Instead, use the "imageName" assigned by the server:
+    let chosen = wall1; // fallback
+
+    switch (wall.imageName) {
+      case "planet1": chosen = planet1; break;
+      case "planet2": chosen = planet2; break;
+      case "wall1": chosen = wall1; break;
+      case "wall2": chosen = wall2; break;
+      case "wall3": chosen = wall3; break;
+      default: chosen = wall1; break;
+    }
+
+    // Then draw that image at this wall's position & size
+    ctx.drawImage(chosen, wall.x, wall.y, wall.width, wall.height);
   });
 }
 
-// **Draw Food Items**
+
+// Food
 function drawFood() {
   foodItems.forEach(food => {
-      if (!food.emoji) return; // 🔴 Safety check
-
-      ctx.font = "20px Arial"; // 🔴 Adjust font size
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(food.emoji, food.x, food.y); // 🔴 Draw emoji at food location
+    if (!food.emoji) return;
+    // Instead of an emoji, we can keep it or do other logic
+    ctx.font = "20px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(food.emoji, food.x, food.y);
   });
 }
 
+// Bots
+function drawBots() {
+  bots.forEach(bot => {
+    if (!bot) return;
+    // 🔴 Use the dragon image instead of a red square
+    // comment out the fill
+    // ctx.fillStyle = "red";
+    // ctx.fillRect(bot.x - bot.size / 2, bot.y - bot.size / 2, bot.size, bot.size);
+
+    // e.g. 50x50 dragons
+    ctx.drawImage(dragonImg, bot.x - 25, bot.y - 25, 50, 50);
+  });
+}
+
+// Bullets
+function drawBullets() {
+  bullets.forEach(bullet => {
+    if (!bullet) return;
+    let bulletImage = bullet.dx < 0 ? bulletImages.left 
+                    : bullet.dx > 0 ? bulletImages.right 
+                    : bullet.dy < 0 ? bulletImages.up 
+                    : bulletImages.down;
+    // bullet smaller e.g. 10x10
+    ctx.drawImage(bulletImage, bullet.x - 5, bullet.y - 5, 10, 10);
+  });
+}
+
+// Coins -> Replace with Egg images
+function drawCoins() {
+  coins.forEach((coin, index) => {
+    // pick an egg image
+    let chosenEgg = (index % 2 === 0) ? egg1 : egg2;
+    // e.g. 30 x 40
+    ctx.drawImage(chosenEgg, coin.x - 15, coin.y - 20, 30, 40);
+  });
+}
+
+// Players (Flipping fix)
+function drawPlayers() {
+  Object.values(players).forEach(player => {
+    if (!player || !player.x || !player.y) return;
+
+    let playerImage = images.idle;
+    let flipX = false;
+
+    if (keys.down) {
+      playerImage = images.crouching;
+    } else if (keys.up) {
+      playerImage = images.flying;
+    } else if (keys.left) {
+      playerImage = images.facingLeft;
+      flipX = false; 
+    } else if (keys.right) {
+      playerImage = images.facingRight;
+      flipX = false;
+    }
+
+    ctx.save();
+    ctx.translate(player.x, player.y);
+    if (flipX) {
+      ctx.scale(-1, 1);
+      // player smaller e.g. 30x30
+      ctx.drawImage(playerImage, -15, -15, -30, 30);
+    } else {
+      ctx.drawImage(playerImage, -15, -15, 30, 30);
+    }
+    ctx.restore();
+  });
+}
+
+// Scoreboard
 function drawScoreboard() {
   let player = players[socket.id] || { coinsCollected: 0 };
 
   ctx.fillStyle = "rgba(0,0,0,0.5)";
-  ctx.fillRect(canvas.width - 220, 10, 210, 100);
+  ctx.fillRect(canvas.width - 200, 10, 200, 100);
   ctx.font = "16px Orbitron";
   ctx.fillStyle = "#00ff99";
-  ctx.fillText("⏳ Time: " + survivalTime + "s", canvas.width - 200, 35);
-  ctx.fillText("🚀 Speed: " + gameSpeedMultiplier.toFixed(1) + "x", canvas.width - 200, 60);
-  ctx.fillText("🪙 Coins: " + player.coinsCollected, canvas.width - 200, 85);
+  ctx.fillText("⏳ Time: " + survivalTime + "s", canvas.width - 100, 35);
+  ctx.fillText("🚀 Speed: " + gameSpeedMultiplier.toFixed(1) + "x", canvas.width - 90, 60);
+  ctx.fillText("🥚 Eggs: " + player.coinsCollected, canvas.width - 105, 85);
 }
 
-
-
-// **Draw Bots (Enemies)**
-function drawBots() {
-  bots.forEach(bot => {
-      if (!bot) return;  // ✅ Prevents errors
-
-      ctx.fillStyle = "red";
-      ctx.fillRect(bot.x - bot.size / 2, bot.y - bot.size / 2, bot.size, bot.size);
-  });
-}
-
-
-// **Draw Bullets**
-function drawBullets() {
-  bullets.forEach(bullet => {
-      if (!bullet) return;  // ✅ Prevents errors
-
-      ctx.beginPath();
-      ctx.arc(bullet.x, bullet.y, BULLET_RADIUS, 0, 2 * Math.PI);
-      ctx.fillStyle = "#00BFFF";
-      ctx.fill();
-  });
-}
-
-
-// **Draw Players**
-function drawPlayers() {
-  Object.values(players).forEach(player => {
-      if (!player) return;  // ✅ Prevents errors
-
-      ctx.beginPath();
-      ctx.arc(player.x, player.y, player.radius, 0, 2 * Math.PI);
-      ctx.fillStyle = player.color;
-      ctx.fill();
-
-      ctx.font = "12px Orbitron";
-      ctx.fillStyle = "#fff";
-      ctx.textAlign = "center";
-      ctx.fillText(player.username, player.x, player.y - player.radius - 10);
-  });
-}
-
-
-// **Start Game Animation**
+/**********************
+ * 11) ANIMATION LOOP
+ **********************/
 function animate() {
-    requestAnimationFrame(animate);
-    if (!paused) draw();
+  requestAnimationFrame(animate);
+  if (!paused) {
+    draw();
+    // simple frame-based animation
+    frameTick++;
+    if (frameTick >= frameSpeed) {
+      frameTick = 0;
+      currentFrame = (currentFrame + 1) % animations[currentAnimation].frames;
+    }
+  }
 }
-
-animate();
