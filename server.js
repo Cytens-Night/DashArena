@@ -1,4 +1,3 @@
-// server.js
 const express = require("express");
 const http = require("http");
 const socketIo = require("socket.io");
@@ -9,150 +8,287 @@ const io = socketIo(server);
 
 app.use(express.static("public"));
 
-// -- Game Constants --
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 500;
 const PLAYER_RADIUS = 15;
 const PLAYER_SPEED = 3;
 const BULLET_RADIUS = 5;
 const BULLET_SPEED = 6;
-
-// Delayed game start
-let gameStartTime = null;
-const WALL_SPAWN_DELAY = 3000;
-
-// Bots & Food
-const BOT_SIZE = 20;
-const BOT_SPEED = 1.5;
-const BOT_SPAWN_INTERVAL = 10000;
-const FOOD_SIZE = 10;
-const FOOD_SPAWN_INTERVAL = 7000;
+const WALL_THICKNESS = 20;
+const BULLET_HOLE_SIZE = 50;
+const BOT_SPEED = 1.2;
 
 const players = {};
-let bots = [];
-let foodItems = [];
 let bullets = [];
-let fallingWalls = [];
+let mazeWalls = [];
+let foodItems = [];
+let bots = [];
+let coins = []; // ✅ Keep this line, REMOVE any duplicates
+let gameSpeedMultiplier = 1; // 🔴 Base speed multiplier
 
-// -- Helper Functions --
+
+// Generate random positions
 function randomPositionWithinCanvas(size) {
     return Math.random() * (CANVAS_WIDTH - size) + size / 2;
 }
 
-function spawnWall() {
-  if (!gameStartTime || Date.now() - gameStartTime < WALL_SPAWN_DELAY) return;
+// Generate maze walls at random positions
+function generateMazeWalls() {
+  mazeWalls = [];
+  
+  for (let i = 0; i < 10; i++) {
+      let wallX, wallY, safeZone = 150; // 🔴 Keep walls 150px away from player
 
-  const gapX = Math.random() * (CANVAS_WIDTH - 250); // Controls horizontal gap position
-  const gapWidth = Math.random() * (250 - 180) + 580; // Controls gap size (increase for easier game)
-  const thickness = Math.random() * (30 - 15) + 15; // Wall thickness
+      do {
+          wallX = randomPositionWithinCanvas(100);
+          wallY = randomPositionWithinCanvas(100);
+      } while (
+          Math.abs(wallX - CANVAS_WIDTH / 2) < safeZone &&
+          Math.abs(wallY - CANVAS_HEIGHT - 50) < safeZone
+      );
 
-  fallingWalls.push({ y: -thickness, gapX, gapWidth, thickness, color: "#ff00ff" });
+      mazeWalls.push({
+          x: wallX,
+          y: wallY,
+          width: Math.random() * 100 + 30,
+          height: Math.random() * 50 + 20,
+          color: "#8B0000",
+      });
+  }
 }
 
-// **Increase or Decrease the Wall Spacing Interval**
-setInterval(spawnWall, 65000); // Change the timing here (increase for more spacing, decrease for less)
-
-
-function spawnBot() {
-    if (!gameStartTime || Date.now() - gameStartTime < WALL_SPAWN_DELAY) return;
-
-    bots.push({
-        x: randomPositionWithinCanvas(BOT_SIZE),
-        y: -BOT_SIZE / 2,
-        size: BOT_SIZE,
-        speed: BOT_SPEED,
-    });
-}
-
+// Spawn food
 function spawnFood() {
-    if (!gameStartTime || Date.now() - gameStartTime < WALL_SPAWN_DELAY) return;
+  if (foodItems.length >= 3) return; // 🔴 Limit max food on screen
 
-    foodItems.push({
-        x: randomPositionWithinCanvas(FOOD_SIZE),
-        y: randomPositionWithinCanvas(FOOD_SIZE),
-        size: FOOD_SIZE,
+  const fruitEmojis = ["🍏", "🍎", "🍌", "🍉", "🍒", "🍇", "🍓", "🥭", "🍍", "🥝"]; // 🔴 Fruit choices
+  let randomFruit = fruitEmojis[Math.floor(Math.random() * fruitEmojis.length)]; // 🔴 Pick random emoji
+
+  foodItems.push({
+      x: randomPositionWithinCanvas(15),
+      y: randomPositionWithinCanvas(15),
+      size: 15, // 🔴 Slightly larger for better visibility
+      emoji: randomFruit, // 🔴 Store emoji
+  });
+
+  console.log(`🍏 New Food Spawned: ${randomFruit}`);
+}
+
+
+function checkCollisions() {
+  Object.keys(players).forEach(playerID => {
+      let player = players[playerID];
+
+      // 🔴 Check if player eats food
+      foodItems = foodItems.filter(food => {
+          let dx = player.x - food.x;
+          let dy = player.y - food.y;
+          if (Math.sqrt(dx * dx + dy * dy) < player.radius + food.size) {
+              console.log(`✅ Player ${player.username} ate ${food.emoji}!`);
+
+              // 🔥 Give player a random speed boost for 1-10 seconds
+              let speedBoostTime = Math.floor(Math.random() * 10) + 1;
+              let originalSpeed = player.speed;
+              player.speed *= 1.5; // 50% speed increase
+              console.log(`🚀 Speed Boost! +50% for ${speedBoostTime}s`);
+
+              setTimeout(() => {
+                  player.speed = originalSpeed; // Restore speed after boost
+                  console.log(`🔵 Speed Boost Ended.`);
+              }, speedBoostTime * 1000);
+
+              return false; // Remove the eaten food
+          }
+          return true; // Keep uneaten food
+      });
+
+      // 🔴 Check if player hits a wall (Game Over)
+      mazeWalls.forEach(wall => {
+          if (
+              player.x + player.radius > wall.x &&
+              player.x - player.radius < wall.x + wall.width &&
+              player.y + player.radius > wall.y &&
+              player.y - player.radius < wall.y + wall.height
+          ) {
+              console.log(`🚨 Player ${player.username} hit a wall! Game Over.`);
+              io.to(playerID).emit("knockedOut", Date.now());
+              delete players[playerID];
+              io.emit("updatePlayers", players);
+          }
+      });
+
+      // 🔴 Check if player collects a gold coin
+      coins = coins.filter(coin => {
+        let collected = false;
+    
+        Object.keys(players).forEach(playerID => {
+            let player = players[playerID];
+    
+            let dx = player.x - coin.x;
+            let dy = player.y - coin.y;
+            if (Math.sqrt(dx * dx + dy * dy) < player.radius + coin.size) {
+                console.log(`🪙 Player ${player.username} collected a coin!`);
+                if (!player.coinsCollected) player.coinsCollected = 0; // ✅ Ensure coinsCollected is defined
+                player.coinsCollected += 1; // ✅ Increase the player's coin count
+                collected = true; // ✅ Remove collected coin
+            }
+        });
+    
+        return !collected; // ✅ Keep uncollected coins
+    });
+    
+
+  });
+}
+
+
+
+// Spawn bots (enemies)
+function spawnBot() {
+    bots.push({
+        x: randomPositionWithinCanvas(20),
+        y: randomPositionWithinCanvas(20),
+        size: 20,
+        speed: BOT_SPEED,
+        alive: true,
     });
 }
 
-// -- Update Functions --
-function updateWalls() {
-    fallingWalls.forEach(wall => { wall.y += 2; });
-    fallingWalls = fallingWalls.filter(wall => wall.y <= CANVAS_HEIGHT);
-    io.emit("updateWalls", fallingWalls);
+// Handle bullets
+function updateBullets() {
+    bullets.forEach((bullet, bulletIndex) => {
+        bullet.x += Math.cos(bullet.angle) * BULLET_SPEED;
+        bullet.y += Math.sin(bullet.angle) * BULLET_SPEED;
+
+        if (bullet.x < 0 || bullet.x > CANVAS_WIDTH || bullet.y < 0 || bullet.y > CANVAS_HEIGHT) {
+            bullets.splice(bulletIndex, 1);
+            return;
+        }
+
+        // Bullet hits a bot
+        bots.forEach((bot, botIndex) => {
+            const dx = bullet.x - bot.x;
+            const dy = bullet.y - bot.y;
+            if (Math.sqrt(dx * dx + dy * dy) < bot.size / 2 + BULLET_RADIUS) {
+                bots.splice(botIndex, 1);
+                bullets.splice(bulletIndex, 1);
+            }
+        });
+    });
+
+    io.emit("updateBullets", bullets);
 }
 
+// Bot movement logic
 function updateBots() {
-    bots.forEach(bot => {
-        bot.y += bot.speed;
-        let closestPlayer = Object.values(players)[0];
+    bots.forEach((bot) => {
+        let closestPlayer = null;
+        let closestDistance = Infinity;
+
+        Object.values(players).forEach((player) => {
+            const dx = player.x - bot.x;
+            const dy = player.y - bot.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < closestDistance) {
+                closestPlayer = player;
+                closestDistance = distance;
+            }
+        });
 
         if (closestPlayer) {
-            let dx = closestPlayer.x - bot.x;
-            let dy = closestPlayer.y - bot.y;
-            let angle = Math.atan2(dy, dx);
-            bot.x += Math.cos(angle) * bot.speed;
+            const angle = Math.atan2(closestPlayer.y - bot.y, closestPlayer.x - bot.x);
+            bot.x += Math.cos(angle) * BOT_SPEED;
+            bot.y += Math.sin(angle) * BOT_SPEED;
+
+            // Collision with player
+            if (closestDistance < PLAYER_RADIUS + bot.size / 2) {
+                io.emit("knockedOut", Date.now());
+                return;
+            }
         }
     });
 
-    bots = bots.filter(bot => bot.y - bot.size / 2 <= CANVAS_HEIGHT);
     io.emit("updateBots", bots);
 }
 
-function updateFood() {
-    io.emit("updateFood", foodItems);
+function spawnCoin() {
+    if (coins.length >= 5) return; // 🔴 Limit max coins on screen
+
+    coins.push({
+        x: randomPositionWithinCanvas(15),
+        y: -20, // 🔴 Start above the screen
+        size: 10,
+        speed: Math.random() * 2 + 1, // 🔴 Random fall speed
+    });
+
+    console.log("🪙 New Coin Spawned!");
 }
 
-// **Collision Detection (Game Over)**
-function checkCollisions() {
-    for (let id in players) {
-        let player = players[id];
+// 🔴 Move Coins Downward
+function updateCoins() {
+    coins.forEach(coin => {
+        coin.y += coin.speed; // Move down
 
-        // Check collision with walls
-        for (let wall of fallingWalls) {
-            if (
-                player.y + player.radius >= wall.y &&
-                player.y - player.radius <= wall.y + wall.thickness &&
-                (player.x - player.radius < wall.gapX || player.x + player.radius > wall.gapX + wall.gapWidth)
-            ) {
-                io.to(id).emit("knockedOut", Date.now() - gameStartTime);
-                delete players[id];
-                io.emit("updatePlayers", players);
-                return;
-            }
+        // 🔴 Remove coin if it goes below screen
+        if (coin.y > CANVAS_HEIGHT) {
+            coins.shift();
         }
+    });
 
-        // Check collision with bots
-        for (let bot of bots) {
-            let dx = player.x - bot.x;
-            let dy = player.y - bot.y;
-            let distance = Math.sqrt(dx * dx + dy * dy);
-
-            if (distance < player.radius + bot.size / 2) {
-                io.to(id).emit("knockedOut", Date.now() - gameStartTime);
-                delete players[id];
-                io.emit("updatePlayers", players);
-                return;
-            }
-        }
-    }
+    io.emit("updateCoins", coins);
 }
 
-// Game Loop Intervals
-setInterval(updateWalls, 50);
+// 🔴 Spawn new coins every 5 seconds
+setInterval(spawnCoin, 5000);
+
+// 🔴 Update falling coins movement every 50ms
+setInterval(updateCoins, 50);
+
+
+// Start game loops
+setInterval(generateMazeWalls, 15000); // Regenerate maze every 15 sec
+setInterval(spawnFood, 7000); // 🔴 Food appears every 12s instead of 7s
+setInterval(spawnBot, 8000);
+setInterval(updateBullets, 50);
 setInterval(updateBots, 50);
-setInterval(updateFood, 50);
-setInterval(spawnWall, 2000);
-setInterval(spawnBot, BOT_SPAWN_INTERVAL);
-setInterval(spawnFood, FOOD_SPAWN_INTERVAL);
-setInterval(checkCollisions, 100);
+setInterval(() => {
+  checkCollisions(); // 🔴 Check for player-wall collisions
+  io.emit("updateGame", {
+    players: Object.keys(players).reduce((acc, id) => {
+        acc[id] = {
+            ...players[id],
+            coinsCollected: players[id].coinsCollected || 0, // ✅ Ensure coin count is included
+        };
+        return acc;
+    }, {}),
+    mazeWalls,
+    foodItems,
+    bots,
+    bullets,
+    coins,
+    gameSpeedMultiplier,
+});
 
-// -- Socket.io Handlers --
+}, 50);
+
+
+
+setInterval(() => {
+    gameSpeedMultiplier *= 1.2; // 🔴 Increase speed by 20% every minute
+
+    Object.values(players).forEach(player => player.speed *= 1.2);
+    bots.forEach(bot => bot.speed *= 1.2);
+    bullets.forEach(bullet => bullet.speed *= 1.2);
+
+    console.log(`🚀 Game Speed Increased by 20%! Multiplier: ${gameSpeedMultiplier}`);
+}, 60000); // Every 60 seconds
+
+
 io.on("connection", (socket) => {
     console.log("Player connected:", socket.id);
 
     socket.on("newPlayer", (username) => {
-        if (!gameStartTime) gameStartTime = Date.now();
-
         players[socket.id] = {
             username,
             x: CANVAS_WIDTH / 2,
@@ -160,6 +296,7 @@ io.on("connection", (socket) => {
             radius: PLAYER_RADIUS,
             color: "#00ff99",
             speed: PLAYER_SPEED,
+            coinsCollected: 0,
         };
 
         io.emit("updatePlayers", players);
@@ -172,23 +309,15 @@ io.on("connection", (socket) => {
         player.x += data.dx * PLAYER_SPEED;
         player.y += data.dy * PLAYER_SPEED;
 
-        // Prevent player from leaving canvas
         player.x = Math.max(PLAYER_RADIUS, Math.min(CANVAS_WIDTH - PLAYER_RADIUS, player.x));
         player.y = Math.max(PLAYER_RADIUS, Math.min(CANVAS_HEIGHT - PLAYER_RADIUS, player.y));
 
         io.emit("updatePlayers", players);
     });
 
-    // **🔫 Shooting Mechanic (Place It Here!)**
     socket.on("shoot", (data) => {
-      bullets.push({
-          x: data.x,
-          y: data.y,
-          angle: data.angle,
-      });
-
-      io.emit("updateBullets", bullets);
-  });
+        bullets.push({ x: data.x, y: data.y, angle: data.angle });
+    });
 
     socket.on("disconnect", () => {
         console.log("Player disconnected:", socket.id);
@@ -197,5 +326,4 @@ io.on("connection", (socket) => {
     });
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(3000, () => console.log(`Server running on port 3000`));
