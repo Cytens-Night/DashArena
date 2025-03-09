@@ -158,9 +158,14 @@ function animate() {
   animationId = requestAnimationFrame(animate);
   if (!paused) {
     draw();
-    // ...
+    frameTick++;
+    if (frameTick >= frameSpeed) {
+      frameTick = 0;
+      currentFrame = (currentFrame + 1) % animations[currentAnimation].frames;
+    }
   }
 }
+
 
 socket.on("knockedOut", (time) => {
   cancelAnimationFrame(animationId); // stops it cold
@@ -439,17 +444,6 @@ function drawScoreboard() {
 /**********************
  * 11) ANIMATION LOOP
  **********************/
-function animate() {
-  requestAnimationFrame(animate);
-  if (!paused) {
-    draw();
-    frameTick++;
-    if (frameTick >= frameSpeed) {
-      frameTick = 0;
-      currentFrame = (currentFrame + 1) % animations[currentAnimation].frames;
-    }
-  }
-}
 
 /**********************
  * 12) END SCREEN & HELP POPUP
@@ -479,9 +473,9 @@ function exitGame() {
   // hide canvas & help/pause
   canvas.style.display = "none";
   pauseBtn.style.display = "none";
-  paused = true;
   let helpBtn = document.getElementById("helpBtn");
   if (helpBtn) helpBtn.style.display = "none";
+  cancelAnimationFrame(animationId); // stops it cold
 }
 
 function toggleHelp() {
