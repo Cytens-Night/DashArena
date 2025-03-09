@@ -29,6 +29,13 @@ let gameSpeedMultiplier = 1;
 let currentWave = 1;
 let waveTime = 0;
 
+/**********************
+ * HELPER: noPlayers()
+ **********************/
+function noPlayers() {
+  return Object.keys(players).length === 0;
+}
+
 // Generate random positions
 function randomPositionWithinCanvas(size) {
     return Math.random() * (CANVAS_WIDTH - size) + size / 2;
@@ -36,6 +43,8 @@ function randomPositionWithinCanvas(size) {
 
 // Generate maze walls at random positions
 function generateMazeWalls() {
+  if (noPlayers()) return; // 🔴 SKIP if no players
+
   mazeWalls = [];
 
   // List of wall images for variety
@@ -51,8 +60,6 @@ function generateMazeWalls() {
           wallY = randomPositionWithinCanvas(100);
       } while (
           !isSafeFromPlayers(wallX, wallY, safeZone) 
-          // Already had a check for keep walls 150px away from center? 
-          // We can keep your existing logic too:
           || (Math.abs(wallX - CANVAS_WIDTH / 2) < safeZone &&
               Math.abs(wallY - CANVAS_HEIGHT - 50) < safeZone)
       );
@@ -68,9 +75,26 @@ function generateMazeWalls() {
   }
 }
 
+function isSafeFromPlayers(x, y, safeDistance) {
+  if (Object.keys(players).length === 0) return true;
+
+  for (let pid of Object.keys(players)) {
+    let p = players[pid];
+    if (!p) continue;
+    let dx = p.x - x;
+    let dy = p.y - y;
+    let dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist < safeDistance) {
+      return false; // Not safe
+    }
+  }
+  return true;
+}
 
 // Spawn food
 function spawnFood() {
+  if (noPlayers()) return; // 🔴 SKIP if no players
+
   if (foodItems.length >= 3) return; 
   const fruitEmojis = ["🍏", "🍎", "🍌", "🍉", "🍒", "🍇", "🍓", "🥭", "🍍", "🥝"];
   let randomFruit = fruitEmojis[Math.floor(Math.random() * fruitEmojis.length)];
@@ -84,6 +108,8 @@ function spawnFood() {
 }
 
 function checkCollisions() {
+  if (noPlayers()) return; // 🔴 SKIP if no players
+
   Object.keys(players).forEach(playerID => {
       let player = players[playerID];
 
@@ -140,6 +166,8 @@ function checkCollisions() {
 
 // Spawn bots (enemies)
 function spawnBot() {
+  if (noPlayers()) return; // 🔴 SKIP if no players
+
   let safeZone = 150; // distance from players
   let botX, botY;
   do {
@@ -156,9 +184,10 @@ function spawnBot() {
   });
 }
 
-
 // Update bullets using dx/dy; handle collisions with bots, etc.
 function updateBullets() {
+  if (noPlayers()) return; // 🔴 SKIP if no players
+
   bullets.forEach((bullet, i) => {
       bullet.x += bullet.dx * BULLET_SPEED;
       bullet.y += bullet.dy * BULLET_SPEED;
@@ -184,35 +213,39 @@ function updateBullets() {
 
 // Bot logic => chase nearest player => collisions => game over
 function updateBots() {
-    bots.forEach((bot) => {
-        let closestPlayer = null;
-        let closestDistance = Infinity;
+  if (noPlayers()) return; // 🔴 SKIP if no players
 
-        Object.values(players).forEach((player) => {
-            const dx = player.x - bot.x;
-            const dy = player.y - bot.y;
-            const distance = Math.sqrt(dx*dx + dy*dy);
-            if (distance < closestDistance) {
-                closestPlayer = player;
-                closestDistance = distance;
-            }
-        });
+  bots.forEach((bot) => {
+      let closestPlayer = null;
+      let closestDistance = Infinity;
 
-        if (closestPlayer) {
-            const angle = Math.atan2(closestPlayer.y - bot.y, closestPlayer.x - bot.x);
-            bot.x += Math.cos(angle) * BOT_SPEED;
-            bot.y += Math.sin(angle) * BOT_SPEED;
-            if (closestDistance < PLAYER_RADIUS + bot.size / 2) {
-                io.emit("knockedOut", Date.now());
-                return;
-            }
-        }
-    });
-    io.emit("updateBots", bots);
+      Object.values(players).forEach((player) => {
+          const dx = player.x - bot.x;
+          const dy = player.y - bot.y;
+          const distance = Math.sqrt(dx*dx + dy*dy);
+          if (distance < closestDistance) {
+              closestPlayer = player;
+              closestDistance = distance;
+          }
+      });
+
+      if (closestPlayer) {
+          const angle = Math.atan2(closestPlayer.y - bot.y, closestPlayer.x - bot.x);
+          bot.x += Math.cos(angle) * BOT_SPEED;
+          bot.y += Math.sin(angle) * BOT_SPEED;
+          if (closestDistance < PLAYER_RADIUS + bot.size / 2) {
+              io.emit("knockedOut", Date.now());
+              return;
+          }
+      }
+  });
+  io.emit("updateBots", bots);
 }
 
 // Spawn coin logic (these become eggs on client)
 function spawnCoin() {
+    if (noPlayers()) return; // 🔴 SKIP if no players
+
     if (coins.length >= 5) return;
     coins.push({
         x: randomPositionWithinCanvas(15),
@@ -224,34 +257,19 @@ function spawnCoin() {
 }
 
 function updateCoins() {
-    coins.forEach((coin, i) => {
-        coin.y += coin.speed;
-        if (coin.y > CANVAS_HEIGHT) coins.shift();
-    });
-    io.emit("updateCoins", coins);
+  if (noPlayers()) return; // 🔴 SKIP if no players
+
+  coins.forEach((coin, i) => {
+      coin.y += coin.speed;
+      if (coin.y > CANVAS_HEIGHT) coins.shift();
+  });
+  io.emit("updateCoins", coins);
 }
 
-function isSafeFromPlayers(x, y, safeDistance) {
-  // If no players exist, we can just say it's safe
-  if (Object.keys(players).length === 0) return true;
-
-  // Check distance from each player's position
-  for (let pid of Object.keys(players)) {
-    let p = players[pid];
-    // if that player doesn't exist, skip
-    if (!p) continue;
-    let dx = p.x - x;
-    let dy = p.y - y;
-    let dist = Math.sqrt(dx*dx + dy*dy);
-    if (dist < safeDistance) {
-      return false; // Not safe
-    }
-  }
-  return true; // If we never found a too-close player, it's safe
-}
-
-// ✅ (NEW) Wave System Updater => every 30 sec => new wave => spawn more bots/walls, etc.
+// ✅ (NEW) Wave System Updater => every 30 sec => spawn more bots/walls, etc.
 function updateWaves() {
+  if (noPlayers()) return; // 🔴 SKIP if no players
+
   waveTime += 1;
   // every 30 seconds, next wave => more frequent spawns, etc.
   if (waveTime >= 30) {
@@ -292,7 +310,7 @@ setInterval(() => {
     bullets,
     coins,
     gameSpeedMultiplier,
-    currentWave, // 🔴 send wave number to clients if you want them to display it
+    currentWave,
   });
 }, 50);
 
