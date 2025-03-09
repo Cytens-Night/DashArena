@@ -153,9 +153,21 @@ socket.on("updateCoins", (serverCoins) => {
 });
 
 // 6D) Knocked Out -> Show End Screen
-socket.on("knockedOut", (serverTime) => {
-  // Pause
-  paused = true;
+let animationId;
+function animate() {
+  animationId = requestAnimationFrame(animate);
+  if (!paused) {
+    draw();
+    // ...
+  }
+}
+
+socket.on("knockedOut", (time) => {
+  cancelAnimationFrame(animationId); // stops it cold
+  canvas.style.display = "none";
+  document.getElementById("startContainer").style.display = "block";
+
+
 
   // Show end screen overlay
   let endScreen = document.getElementById("endScreen");
@@ -181,6 +193,7 @@ socket.on("knockedOut", (serverTime) => {
  **********************/
 // Show Ad & Start
 function showAdAndStart() {
+  document.getElementById("endScreen").style.display = "none";
   const nameInput = document.getElementById("username");
   let user = nameInput ? nameInput.value : "";
   if (!user && storedName) {
