@@ -479,6 +479,7 @@ function exitGame() {
   // hide canvas & help/pause
   canvas.style.display = "none";
   pauseBtn.style.display = "none";
+  paused = true;
   let helpBtn = document.getElementById("helpBtn");
   if (helpBtn) helpBtn.style.display = "none";
 }
