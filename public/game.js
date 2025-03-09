@@ -338,9 +338,39 @@ function drawFood() {
 function drawBots() {
   bots.forEach(bot => {
     if (!bot) return;
-    ctx.drawImage(dragonImg, bot.x - 25, bot.y - 25, 50, 50);
+
+    // 🔴 If this is the first time drawing the bot, store its position
+    if (bot.oldX === undefined) {
+      bot.oldX = bot.x;
+    }
+
+    // 🔴 Determine flip based on movement from oldX to new x
+    let flipX = true;
+    if (bot.x < bot.oldX) {
+      flipX = true;  // Bot is moving left
+    }
+
+    ctx.save();
+    // Translate to bot’s position
+    ctx.translate(bot.x, bot.y);
+
+    if (flipX) {
+      // Flip horizontally
+      ctx.scale(-1, 1);
+      // e.g. 50x50 dragon
+      ctx.drawImage(dragonImg, -25, -25, -50, 50);
+    } else {
+      // Face right (no flip)
+      ctx.drawImage(dragonImg, -25, -25, 50, 50);
+    }
+
+    ctx.restore();
+
+    // 🔴 Update oldX for next frame
+    bot.oldX = bot.x;
   });
 }
+
 
 // Bullets
 function drawBullets() {
