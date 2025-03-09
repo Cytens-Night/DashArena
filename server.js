@@ -43,9 +43,7 @@ let sessions = {}; // maps socket.id => { players, bullets, walls, etc. }
 function createSession(socketId) {
   sessions[socketId] = {
     // single 'players' object for just this user 
-    // (or multiple if you want multi-play per session)
     players: {},
-
     bullets: [],
     mazeWalls: [],
     foodItems: [],
@@ -59,6 +57,7 @@ function createSession(socketId) {
 
 /**********************
  * HELPER: Hard reset for a user's game data
+ * (We won't use this now, but we leave it in.)
  **********************/
 function resetSession(socketId) {
   const s = sessions[socketId];
@@ -84,12 +83,9 @@ function randomPositionWithinCanvas(size) {
 
 /**********************
  * ***** PER-USER SPAWN / UPDATE FUNCTIONS *****
- * We pass socketId or session object.
- * We'll replicate your spawnFood, spawnBot, etc. individually.
  **********************/
 
 function isSafeFromPlayer(s, x, y, safeDistance) {
-  // for each player in that user's session
   for (let pid in s.players) {
     let p = s.players[pid];
     let dx = p.x - x;
@@ -204,7 +200,6 @@ function updateBullets(socketId) {
     bullet.x += bullet.dx * BULLET_SPEED;
     bullet.y += bullet.dy * BULLET_SPEED;
   });
-  // remove offscreen
   s.bullets = s.bullets.filter(b => b.x > 0 && b.x < CANVAS_WIDTH && b.y > 0 && b.y < CANVAS_HEIGHT);
 
   // bullet hits bots
@@ -214,7 +209,6 @@ function updateBullets(socketId) {
       let dy = bullet.y - bot.y;
       if (Math.sqrt(dx*dx + dy*dy) < bot.size/2 + BULLET_RADIUS) {
         s.bots.splice(bIndex, 1);
-        // remove bullet
         s.bullets.splice(i,1);
       }
     });
@@ -227,7 +221,6 @@ function updateBots(socketId) {
   if (Object.keys(s.players).length === 0) return;
 
   s.bots.forEach(bot => {
-    // find closest player
     let closestPlayer = null;
     let closestDistance = Infinity;
     for (let pid in s.players) {
@@ -248,12 +241,14 @@ function updateBots(socketId) {
   });
 }
 
+/**********************
+ * 🔴 ADDED: checkCollisions => kill player if they collide with a BOT
+ **********************/
 function checkCollisions(socketId) {
   let s = sessions[socketId];
   if (!s) return;
   if (Object.keys(s.players).length === 0) return;
 
-  // for each player in that user's session
   for (let pid in s.players) {
     let player = s.players[pid];
 
@@ -262,7 +257,6 @@ function checkCollisions(socketId) {
       let dx = player.x - food.x;
       let dy = player.y - food.y;
       if (Math.sqrt(dx*dx + dy*dy) < player.radius + food.size) {
-        // ate food
         let speedBoostTime = Math.floor(Math.random()*10)+1;
         let originalSpeed = player.speed;
         player.speed *= 1.5;
@@ -282,20 +276,31 @@ function checkCollisions(socketId) {
         player.y + player.radius > wall.y &&
         player.y - player.radius < wall.y + wall.height
       ) {
-        // knocked out
         console.log("🚨 Player hit a wall in their session:", socketId);
-        // tell client
         io.to(socketId).emit("knockedOut", Date.now());
-
-        // remove the player
         delete s.players[pid];
 
-        // reset that user's session data
-        resetSession(socketId);
+        // 🔴 Instead of resetSession, we fully remove the session:
+        delete sessions[socketId];
       }
     });
 
-    // check coins => if collecting
+    // 🔴 check bots => if distance < radius+bot.size/2 => game over
+    s.bots.forEach(bot => {
+      let dx = player.x - bot.x;
+      let dy = player.y - bot.y;
+      let dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < player.radius + bot.size/2) {
+        console.log("🚨 Player got eaten by a dragon in session:", socketId);
+        io.to(socketId).emit("knockedOut", Date.now());
+        delete s.players[pid];
+
+        // 🔴 Also remove entire session => user truly restarts
+        delete sessions[socketId];
+      }
+    });
+
+    // check coins
     s.coins = s.coins.filter(coin => {
       let collected = false;
       for (let pid2 in s.players) {
@@ -324,7 +329,6 @@ function updateWaves(socketId) {
     s.waveTime = 0;
     s.currentWave++;
     console.log("🌊 wave", s.currentWave, "for user:", socketId);
-    // spawn extra bots
     for (let i=0; i<s.currentWave; i++){
       spawnBot(socketId);
     }
@@ -337,11 +341,9 @@ function speedUpEveryMinute(socketId) {
   if (Object.keys(s.players).length === 0) return;
 
   s.gameSpeedMultiplier *= 1.2;
-  // increase speed for the user’s players
   for (let pid in s.players) {
     s.players[pid].speed *= 1.2;
   }
-  // increase bullet speed => we can multiply bullet dx/dy
   s.bullets.forEach(b => {
     b.dx *= 1.2;
     b.dy *= 1.2;
@@ -392,7 +394,6 @@ function sendUpdatesToAll() {
   Object.keys(sessions).forEach(socketId => {
     let s = sessions[socketId];
     if (!s) return;
-    // Only if they have a player:
     if (Object.keys(s.players).length === 0) return;
 
     io.to(socketId).emit("updateGame", {
@@ -434,11 +435,10 @@ setInterval(speedUpAll, 60000);
 io.on("connection", (socket) => {
   console.log("Player connected:", socket.id);
 
-  // ***** Create a fresh session for this user:
+  // Create a fresh session
   createSession(socket.id);
 
-  // Store a single "player" object for them:
-  // We'll fill it once they choose a name
+  // single "player" object for them
   sessions[socket.id].players[socket.id] = {
     username: "temp",
     x: CANVAS_WIDTH / 2,
@@ -449,13 +449,17 @@ io.on("connection", (socket) => {
   };
 
   socket.on("newPlayer", (username) => {
+    // If the user has no session, create it again
+    if (!sessions[socket.id]) {
+      createSession(socket.id);
+    }
+
     let s = sessions[socket.id];
     if (!s) return;
     let p = s.players[socket.id];
     if (p) {
       p.username = username;
     }
-    // You can emit an initial update
     io.to(socket.id).emit("updatePlayers", s.players);
   });
 
@@ -469,7 +473,6 @@ io.on("connection", (socket) => {
     // clamp
     p.x = Math.max(PLAYER_RADIUS, Math.min(CANVAS_WIDTH - PLAYER_RADIUS, p.x));
     p.y = Math.max(PLAYER_RADIUS, Math.min(CANVAS_HEIGHT - PLAYER_RADIUS, p.y));
-    // if you want to send partial updates:
     io.to(socket.id).emit("updatePlayers", s.players);
   });
 
@@ -486,7 +489,6 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", () => {
     console.log("Player disconnected:", socket.id);
-    // Wipe entire session for them
     delete sessions[socket.id];
   });
 });

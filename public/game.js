@@ -24,9 +24,13 @@ const frameSpeed = 6;
 const BULLET_RADIUS = 5;
 let keys = { up: false, down: false, left: false, right: false }; 
 
-// We'll track the player's name in localStorage
+// 🔴 We'll track the player's name in localStorage
 let storedName = localStorage.getItem("playerName") || ""; 
+
+// 🔴 We'll track the local start time to compute survival easily
 let clientStartTime = 0; // We'll set it in showAdAndStart()
+
+// 🔴 We'll treat each game as a "session"
 let sessionActive = false; // If false, we stop drawing
 
 /**********************
@@ -71,11 +75,12 @@ bulletImages.down.src = "/Assets/Knive_Down.png";
 
 // Dragon for bots
 const dragonLeftImg = new Image();
-dragonLeftImg.src = "/Assets/Dragon_Attacking_Facing_left.png";
-const dragonRightImg = new Image();
-dragonRightImg.src = "/Assets/Dragon_Attacking_Facing_right.png";
+dragonLeftImg.src = "/Assets/Dragon_Attacking_Facing_left.png";  // or your chosen filename
 
-// Egg images
+const dragonRightImg = new Image();
+dragonRightImg.src = "/Assets/Dragon_Attacking_Facing_right.png"; // or your chosen filename
+
+// Egg images to replace coins
 const egg1 = new Image();
 egg1.src = "/Assets/Fall_Dragon_Egg_1.png";
 const egg2 = new Image();
@@ -104,10 +109,11 @@ const animations = {
 };
 let currentAnimation = "idle"; 
 
-// Audio references
-let bgMusic = new Audio("/Assets/bgMusic.mp3");
+// 🔴 Audio references (optional)
+let bgMusic = new Audio("/Assets/bgMusic.mp3"); // loopable background music
 let shootSound = new Audio("/Assets/shootSound.mp3"); 
 let coinSound = new Audio("/Assets/coinSound.mp3"); 
+// let dragonRoar = new Audio("/Assets/dragonRoar.mp3";
 
 /**********************
  * 5) TIMERS & INTERVALS
@@ -157,28 +163,24 @@ socket.on("updateCoins", (serverCoins) => {
   coins = serverCoins;
 });
 
-// Knocked out => show end screen
+/**********************
+ * 6A) Knocked out => immediate return to name page
+ **********************/
 socket.on("knockedOut", (time) => {
-  cancelAnimationFrame(animationId); 
-  sessionActive = false; 
+  console.log("Knocked out event from server. Time:", time);
+  cancelAnimationFrame(animationId);
+  sessionActive = false;
+  paused = true;
+
+  // hide canvas, show name input
   canvas.style.display = "none";
   document.getElementById("startContainer").style.display = "block";
+  pauseBtn.style.display = "none";
+  let helpBtn = document.getElementById("helpBtn");
+  if (helpBtn) helpBtn.style.display = "none";
 
   bgMusic.pause();
   bgMusic.currentTime = 0;
-
-  let endScreen = document.getElementById("endScreen");
-  let endStats = document.getElementById("endStats");
-  endScreen.style.display = "block";
-
-  let totalMs = Date.now() - clientStartTime; 
-  let survivedSecs = Math.floor(totalMs / 1000);
-
-  let eggsCollected = 0;
-  let me = players[socket.id];
-  if (me) eggsCollected = me.coinsCollected || 0;
-
-  endStats.textContent = `You survived for ${survivedSecs} seconds and collected ${eggsCollected} eggs!`;
 });
 
 /**********************
@@ -187,7 +189,9 @@ socket.on("knockedOut", (time) => {
 let animationId;
 function showAdAndStart() {
   document.getElementById("endScreen").style.display = "none";
-  bgMusic.play();
+
+  bgMusic.play().catch(err=>console.log(err));
+
   const nameInput = document.getElementById("username");
   let user = nameInput ? nameInput.value : "";
   if (!user && storedName) {
@@ -209,8 +213,8 @@ function showAdAndStart() {
 
   survivalTime = 0;
   clientStartTime = Date.now();
-
   sessionActive = true;
+  paused = false;
 
   socket.emit("newPlayer", storedName);
   animate();
@@ -433,6 +437,7 @@ function animate() {
 /**********************
  * 12) END SCREEN & HELP POPUP
  **********************/
+// "Play Again" => no name prompt => partial reset
 function playAgain() {
   document.getElementById("endScreen").style.display = "none";
   survivalTime = 0;
@@ -471,3 +476,21 @@ function toggleHelp() {
     helpPopup.style.display = "block";
   }
 }
+
+// (Optional) Example client-side dragon collision
+// function checkDragonCollisionsClientSide() {
+//   let me = players[socket.id];
+//   if (!me) return;
+//   bots.forEach(bot => {
+//     let dx = me.x - bot.x;
+//     let dy = me.y - bot.y;
+//     let dist = Math.sqrt(dx*dx + dy*dy);
+//     if (dist < me.radius + bot.size/2) {
+//       console.log("Dragon collided with me, client side!");
+//       sessionActive = false;
+//       paused = true;
+//       canvas.style.display = "none";
+//       document.getElementById("startContainer").style.display = "block";
+//     }
+//   });
+// }
