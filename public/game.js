@@ -24,13 +24,9 @@ const frameSpeed = 6;
 const BULLET_RADIUS = 5;
 let keys = { up: false, down: false, left: false, right: false }; 
 
-// 🔴 We'll track the player's name in localStorage
+// We'll track the player's name in localStorage
 let storedName = localStorage.getItem("playerName") || ""; 
-
-// 🔴 We'll track the local start time to compute survival easily
 let clientStartTime = 0; // We'll set it in showAdAndStart()
-
-// 🔴 NEW: We'll treat each game as a "session"
 let sessionActive = false; // If false, we stop drawing
 
 /**********************
@@ -75,12 +71,11 @@ bulletImages.down.src = "/Assets/Knive_Down.png";
 
 // Dragon for bots
 const dragonLeftImg = new Image();
-dragonLeftImg.src = "/Assets/Dragon_Attacking_Facing_left.png";  // or your chosen filename
-
+dragonLeftImg.src = "/Assets/Dragon_Attacking_Facing_left.png";
 const dragonRightImg = new Image();
-dragonRightImg.src = "/Assets/Dragon_Attacking_Facing_right.png"; // or your chosen filename
+dragonRightImg.src = "/Assets/Dragon_Attacking_Facing_right.png";
 
-// Egg images to replace coins
+// Egg images
 const egg1 = new Image();
 egg1.src = "/Assets/Fall_Dragon_Egg_1.png";
 const egg2 = new Image();
@@ -109,12 +104,10 @@ const animations = {
 };
 let currentAnimation = "idle"; 
 
-// 🔴 NEW: Audio references (optional)
-let bgMusic = new Audio("/Assets/bgMusic.mp3"); // loopable background music
+// Audio references
+let bgMusic = new Audio("/Assets/bgMusic.mp3");
 let shootSound = new Audio("/Assets/shootSound.mp3"); 
 let coinSound = new Audio("/Assets/coinSound.mp3"); 
-// You can also add a roar or explosion, e.g. 
-// let dragonRoar = new Audio("/Assets/dragonRoar.mp3");
 
 /**********************
  * 5) TIMERS & INTERVALS
@@ -166,25 +159,21 @@ socket.on("updateCoins", (serverCoins) => {
 
 // Knocked out => show end screen
 socket.on("knockedOut", (time) => {
-  cancelAnimationFrame(animationId); // stops it cold
-  sessionActive = false; // 🔴 End session
+  cancelAnimationFrame(animationId); 
+  sessionActive = false; 
   canvas.style.display = "none";
   document.getElementById("startContainer").style.display = "block";
 
-  // Stop background music (if playing)
   bgMusic.pause();
   bgMusic.currentTime = 0;
 
-  // Show end screen overlay
   let endScreen = document.getElementById("endScreen");
   let endStats = document.getElementById("endStats");
   endScreen.style.display = "block";
 
-  // local survival
   let totalMs = Date.now() - clientStartTime; 
   let survivedSecs = Math.floor(totalMs / 1000);
 
-  // eggs
   let eggsCollected = 0;
   let me = players[socket.id];
   if (me) eggsCollected = me.coinsCollected || 0;
@@ -198,7 +187,7 @@ socket.on("knockedOut", (time) => {
 let animationId;
 function showAdAndStart() {
   document.getElementById("endScreen").style.display = "none";
-  bgMusic.play(); // 🔴 Start background music if you want
+  bgMusic.play();
   const nameInput = document.getElementById("username");
   let user = nameInput ? nameInput.value : "";
   if (!user && storedName) {
@@ -218,11 +207,9 @@ function showAdAndStart() {
   let helpBtn = document.getElementById("helpBtn");
   if (helpBtn) helpBtn.style.display = "block";
 
-  // Reset local times
   survivalTime = 0;
   clientStartTime = Date.now();
 
-  // 🔴 Start session
   sessionActive = true;
 
   socket.emit("newPlayer", storedName);
@@ -303,7 +290,7 @@ function shootBullet(event) {
  * 10) DRAW FUNCTIONS
  **********************/
 function draw() {
-  if (!sessionActive) return; // 🔴 If session ended, skip drawing
+  if (!sessionActive) return; 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(background, 0, 0, canvas.width, canvas.height);
 
@@ -349,29 +336,20 @@ function drawBots() {
   bots.forEach(bot => {
     if (!bot) return;
 
-    // Keep old line: track oldX
     if (bot.oldX === undefined) {
       bot.oldX = bot.x;
     }
-
-    // DETERMINE if the bot is going left or right
     let goingLeft = false;
     if (bot.x < bot.oldX) {
       goingLeft = true;
     }
 
-    // 🔴 CHOOSE the correct image
     let chosenDragon = goingLeft ? dragonLeftImg : dragonRightImg;
-
-    // 🔴 NEW: Just draw the chosenDragon
-    // we no longer flip in the code
     ctx.drawImage(chosenDragon, bot.x - 25, bot.y - 25, 50, 50);
 
-    // update oldX
     bot.oldX = bot.x;
   });
 }
-
 
 // Bullets
 function drawBullets() {
@@ -385,7 +363,7 @@ function drawBullets() {
   });
 }
 
-// Coins -> Egg images
+// Coins
 function drawCoins() {
   coins.forEach((coin, index) => {
     let chosenEgg = (index % 2 === 0) ? egg1 : egg2;
@@ -455,32 +433,23 @@ function animate() {
 /**********************
  * 12) END SCREEN & HELP POPUP
  **********************/
-// "Play Again" => no name prompt => partial reset
 function playAgain() {
   document.getElementById("endScreen").style.display = "none";
-  // reset local states
   survivalTime = 0;
   paused = false;
   clientStartTime = Date.now();
 
-  // re-emit newPlayer with storedName
   socket.emit("newPlayer", storedName);
-
-  // 🔴 Start session again
   sessionActive = true;
-
-  // If we had paused or canceled the loop, let's re-run it
   animate(); 
 }
 
-// "Exit" => go to main page but keep name
 function exitGame() {
   document.getElementById("endScreen").style.display = "none";
   document.getElementById("startContainer").style.display = "block";
   let nameInput = document.getElementById("username");
   nameInput.value = storedName;
 
-  // hide canvas & help/pause
   canvas.style.display = "none";
   pauseBtn.style.display = "none";
   let helpBtn = document.getElementById("helpBtn");
@@ -488,8 +457,7 @@ function exitGame() {
 
   cancelAnimationFrame(animationId); 
   paused = true;
-  sessionActive = false; // 🔴 End session
-  // stop music if playing
+  sessionActive = false;
   bgMusic.pause();
   bgMusic.currentTime = 0;
 }
