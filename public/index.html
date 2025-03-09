@@ -24,20 +24,18 @@
     <div style="position:relative; top:50%; transform:translateY(-50%); color:#fff;">
       <h1>Game Over!</h1>
       <p id="endStats"></p>
-      <button onclick="exitGame()">Exit</button>
+      <button onclick="playAgain()">Play Again</button>
     </div>
   </div>
 
   <button id="pauseBtn" onclick="togglePause()" 
-  style="display:none; position:absolute; top:10px; left:10px;">
-Pause
-</button>
-<button id="helpBtn" onclick="toggleHelp()" 
-  style="display:none; position:absolute; top:60px; left:10px;">
-Help
-</button>
-
-
+          style="display:none; position:absolute; top:10px; left:10px;">
+    Pause
+  </button>
+  <button id="helpBtn" onclick="toggleHelp()" 
+          style="display:none; position:absolute; top:60px; left:10px;">
+    Help
+  </button>
 
   <!-- Help Popup -->
   <div id="helpPopup" 
@@ -46,9 +44,10 @@ Help
     <div style="position:relative; top:50%; transform:translateY(-50%); color:#fff;">
       <h1>How to Play</h1>
       <p>
-        Use W/A/S/D or Arrow Keys to move.<br>
-        Click to shoot in mouse direction.<br>
-        Avoid bots & walls. Collect eggs for points.
+        - Use W/A/S/D or Arrow Keys to move.<br>
+        - Click to shoot in mouse direction.<br>
+        - Avoid bots & walls. Collect eggs for points.<br>
+        - Survive waves of increasing difficulty. You may find power-ups occasionally!
       </p>
       <button onclick="toggleHelp()">Close</button>
     </div>

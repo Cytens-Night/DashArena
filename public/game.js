@@ -30,6 +30,9 @@ let storedName = localStorage.getItem("playerName") || "";
 // 🔴 We'll track the local start time to compute survival easily
 let clientStartTime = 0; // We'll set it in showAdAndStart()
 
+// 🔴 NEW: We'll treat each game as a "session"
+let sessionActive = false; // If false, we stop drawing
+
 /**********************
  * 3) BACKGROUND
  **********************/
@@ -71,8 +74,11 @@ bulletImages.up.src = "/Assets/Knive_Up.png";
 bulletImages.down.src = "/Assets/Knive_Down.png";
 
 // Dragon for bots
-const dragonImg = new Image();
-dragonImg.src = "/Assets/Dragon_Attacking.png";
+const dragonLeftImg = new Image();
+dragonLeftImg.src = "/Assets/Dragon_Attacking_Facing_left.png";  // or your chosen filename
+
+const dragonRightImg = new Image();
+dragonRightImg.src = "/Assets/Dragon_Attacking_Facing_right.png"; // or your chosen filename
 
 // Egg images to replace coins
 const egg1 = new Image();
@@ -103,11 +109,18 @@ const animations = {
 };
 let currentAnimation = "idle"; 
 
+// 🔴 NEW: Audio references (optional)
+let bgMusic = new Audio("/Assets/bgMusic.mp3"); // loopable background music
+let shootSound = new Audio("/Assets/shootSound.mp3"); 
+let coinSound = new Audio("/Assets/coinSound.mp3"); 
+// You can also add a roar or explosion, e.g. 
+// let dragonRoar = new Audio("/Assets/dragonRoar.mp3");
+
 /**********************
  * 5) TIMERS & INTERVALS
  **********************/
 setInterval(() => {
-  if (!paused) {
+  if (!paused && sessionActive) {
     survivalTime += 1;
   }
 }, 1000);
@@ -124,7 +137,6 @@ setInterval(() => {
 /**********************
  * 6) SOCKET.IO EVENTS
  **********************/
-// 6A) Update Game
 socket.on("updateGame", (data) => {
   players = data.players || {};
   mazeWalls = data.mazeWalls || [];
@@ -142,63 +154,51 @@ socket.on("updateGame", (data) => {
   }
 });
 
-// 6B) Bullet Updates
+// Bullets updates
 socket.on("updateBullets", (serverBullets) => {
   bullets = serverBullets;
 });
 
-// 6C) Coin Updates
+// Coins updates
 socket.on("updateCoins", (serverCoins) => {
   coins = serverCoins;
 });
 
-// 6D) Knocked Out -> Show End Screen
-let animationId;
-function animate() {
-  animationId = requestAnimationFrame(animate);
-  if (!paused) {
-    draw();
-    frameTick++;
-    if (frameTick >= frameSpeed) {
-      frameTick = 0;
-      currentFrame = (currentFrame + 1) % animations[currentAnimation].frames;
-    }
-  }
-}
-
-
+// Knocked out => show end screen
 socket.on("knockedOut", (time) => {
   cancelAnimationFrame(animationId); // stops it cold
+  sessionActive = false; // 🔴 End session
   canvas.style.display = "none";
   document.getElementById("startContainer").style.display = "block";
 
-
+  // Stop background music (if playing)
+  bgMusic.pause();
+  bgMusic.currentTime = 0;
 
   // Show end screen overlay
   let endScreen = document.getElementById("endScreen");
   let endStats = document.getElementById("endStats");
   endScreen.style.display = "block";
 
-  // Instead of the huge epoch-based number, 
-  // compute local survival from our own clientStartTime
+  // local survival
   let totalMs = Date.now() - clientStartTime; 
   let survivedSecs = Math.floor(totalMs / 1000);
 
-  // How many eggs the local player had
+  // eggs
   let eggsCollected = 0;
   let me = players[socket.id];
   if (me) eggsCollected = me.coinsCollected || 0;
 
-  // Show survival time + eggs
   endStats.textContent = `You survived for ${survivedSecs} seconds and collected ${eggsCollected} eggs!`;
 });
 
 /**********************
  * 7) START & PAUSE
  **********************/
-// Show Ad & Start
+let animationId;
 function showAdAndStart() {
   document.getElementById("endScreen").style.display = "none";
+  bgMusic.play(); // 🔴 Start background music if you want
   const nameInput = document.getElementById("username");
   let user = nameInput ? nameInput.value : "";
   if (!user && storedName) {
@@ -218,15 +218,17 @@ function showAdAndStart() {
   let helpBtn = document.getElementById("helpBtn");
   if (helpBtn) helpBtn.style.display = "block";
 
-  // 🔴 Reset local times
+  // Reset local times
   survivalTime = 0;
   clientStartTime = Date.now();
+
+  // 🔴 Start session
+  sessionActive = true;
 
   socket.emit("newPlayer", storedName);
   animate();
 }
 
-// Toggle Pause
 function togglePause() {
   paused = !paused;
   pauseBtn.textContent = paused ? "Resume" : "Pause";
@@ -260,7 +262,7 @@ window.addEventListener("keyup", (e) => {
 });
 
 setInterval(() => {
-  if (!paused) {
+  if (!paused && sessionActive) {
     let dx = 0, dy = 0;
     if (keys.up) dy = -1;
     if (keys.down) dy = 1;
@@ -283,6 +285,9 @@ function shootBullet(event) {
   const player = players[socket.id];
   if (!player) return;
 
+  shootSound.currentTime = 0; 
+  shootSound.play().catch(err => console.log(err));
+
   let rect = canvas.getBoundingClientRect();
   let mouseX = event.clientX - rect.left;
   let mouseY = event.clientY - rect.top;
@@ -298,7 +303,7 @@ function shootBullet(event) {
  * 10) DRAW FUNCTIONS
  **********************/
 function draw() {
-  // background
+  if (!sessionActive) return; // 🔴 If session ended, skip drawing
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(background, 0, 0, canvas.width, canvas.height);
 
@@ -344,34 +349,25 @@ function drawBots() {
   bots.forEach(bot => {
     if (!bot) return;
 
-    // 🔴 If this is the first time drawing the bot, store its position
+    // Keep old line: track oldX
     if (bot.oldX === undefined) {
       bot.oldX = bot.x;
     }
 
-    // 🔴 Determine flip based on movement from oldX to new x
-    let flipX = true;
+    // DETERMINE if the bot is going left or right
+    let goingLeft = false;
     if (bot.x < bot.oldX) {
-      flipX = true;  // Bot is moving left
+      goingLeft = true;
     }
 
-    ctx.save();
-    // Translate to bot’s position
-    ctx.translate(bot.x, bot.y);
+    // 🔴 CHOOSE the correct image
+    let chosenDragon = goingLeft ? dragonLeftImg : dragonRightImg;
 
-    if (flipX) {
-      // Flip horizontally
-      ctx.scale(-1, 1);
-      // e.g. 50x50 dragon
-      ctx.drawImage(dragonImg, -25, -25, -50, 50);
-    } else {
-      // Face right (no flip)
-      ctx.drawImage(dragonImg, -25, -25, 50, 50);
-    }
+    // 🔴 NEW: Just draw the chosenDragon
+    // we no longer flip in the code
+    ctx.drawImage(chosenDragon, bot.x - 25, bot.y - 25, 50, 50);
 
-    ctx.restore();
-
-    // 🔴 Update oldX for next frame
+    // update oldX
     bot.oldX = bot.x;
   });
 }
@@ -421,9 +417,9 @@ function drawPlayers() {
     ctx.translate(player.x, player.y);
     if (flipX) {
       ctx.scale(-1, 1);
-      ctx.drawImage(playerImage, -15, -15, -30, 30);
+      ctx.drawImage(playerImage, -25, -25, -40, 50);
     } else {
-      ctx.drawImage(playerImage, -15, -15, 30, 30);
+      ctx.drawImage(playerImage, -20, -25, 40, 50);
     }
     ctx.restore();
   });
@@ -444,6 +440,17 @@ function drawScoreboard() {
 /**********************
  * 11) ANIMATION LOOP
  **********************/
+function animate() {
+  animationId = requestAnimationFrame(animate);
+  if (!paused && sessionActive) {
+    draw();
+    frameTick++;
+    if (frameTick >= frameSpeed) {
+      frameTick = 0;
+      currentFrame = (currentFrame + 1) % animations[currentAnimation].frames;
+    }
+  }
+}
 
 /**********************
  * 12) END SCREEN & HELP POPUP
@@ -454,12 +461,15 @@ function playAgain() {
   // reset local states
   survivalTime = 0;
   paused = false;
-  // also reset clientStartTime so new survival time is correct
   clientStartTime = Date.now();
 
   // re-emit newPlayer with storedName
   socket.emit("newPlayer", storedName);
-  // keep the same connection, just re-start game
+
+  // 🔴 Start session again
+  sessionActive = true;
+
+  // If we had paused or canceled the loop, let's re-run it
   animate(); 
 }
 
@@ -475,7 +485,13 @@ function exitGame() {
   pauseBtn.style.display = "none";
   let helpBtn = document.getElementById("helpBtn");
   if (helpBtn) helpBtn.style.display = "none";
-  cancelAnimationFrame(animationId); // stops it cold
+
+  cancelAnimationFrame(animationId); 
+  paused = true;
+  sessionActive = false; // 🔴 End session
+  // stop music if playing
+  bgMusic.pause();
+  bgMusic.currentTime = 0;
 }
 
 function toggleHelp() {
