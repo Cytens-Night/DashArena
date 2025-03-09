@@ -4,9 +4,24 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Dodge Arena</title>
+
   <!-- Google Font for a futuristic look -->
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+
+  <!-- 🔴 1) Insert your meta tag here -->
+  <meta name="google-adsense-account" content="ca-pub-4642166681578319">
+
+  <!-- 🔴 2) Example AdSense script -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"
+          data-ad-client="ca-pub-4642166681578319">
+  </script>
+  
+  <!-- 
+    NOTE:
+    - The "data-ad-client" above is set to your "ca-pub-4642166681578319"
+    - If AdSense gave you a different snippet, use that instead
+  -->
 </head>
 <body>
   <div id="startContainer">
@@ -51,6 +66,20 @@
       </p>
       <button onclick="toggleHelp()">Close</button>
     </div>
+  </div>
+
+  <!-- 🔴 3) Example ad block you can place above or below your canvas -->
+  <div style="margin: 20px 0;">
+    <ins class="adsbygoogle"
+         style="display:block"
+         data-ad-client="ca-pub-4642166681578319"
+         data-ad-slot="1234567890"  <!-- Replace with your real ad slot ID -->
+         data-ad-format="auto"
+         data-full-width-responsive="true">
+    </ins>
+    <script>
+      (adsbygoogle = window.adsbygoogle || []).push({});
+    </script>
   </div>
 
   <canvas id="gameCanvas" width="800" height="500"></canvas>
