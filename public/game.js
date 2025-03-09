@@ -14,15 +14,21 @@ let mazeWalls = [];
 let foodItems = [];
 let bots = [];
 let bullets = [];
-let coins = []; // Ensure coins is defined
+let coins = []; 
 let survivalTime = 0;
 let paused = false;
 let gameSpeedMultiplier = 1;
 let currentFrame = 0; 
 let frameTick = 0;
-const frameSpeed = 6; // Animation speed
+const frameSpeed = 6; 
 const BULLET_RADIUS = 5;
-let keys = { up: false, down: false, left: false, right: false }; // Player movement
+let keys = { up: false, down: false, left: false, right: false }; 
+
+// 🔴 We'll track the player's name in localStorage
+let storedName = localStorage.getItem("playerName") || ""; 
+
+// 🔴 We'll track the local start time to compute survival easily
+let clientStartTime = 0; // We'll set it in showAdAndStart()
 
 /**********************
  * 3) BACKGROUND
@@ -45,7 +51,7 @@ const images = {
   facingRight: new Image(),
   shooting: new Image(),
 };
-images.idle.src = "/Assets/Facing Right.png";  // Default
+images.idle.src = "/Assets/Facing Right.png";  
 images.crouching.src = "/Assets/Crouching.png";
 images.flying.src = "/Assets/Flying.png";
 images.facingLeft.src = "/Assets/Facing Left.png";
@@ -64,17 +70,17 @@ bulletImages.right.src = "/Assets/Knive_right.png";
 bulletImages.up.src = "/Assets/Knive_Up.png";
 bulletImages.down.src = "/Assets/Knive_Down.png";
 
-// New: Dragon for bots
+// Dragon for bots
 const dragonImg = new Image();
 dragonImg.src = "/Assets/Dragon_Attacking.png";
 
-// New: Egg images to replace coins
+// Egg images to replace coins
 const egg1 = new Image();
 egg1.src = "/Assets/Fall_Dragon_Egg_1.png";
 const egg2 = new Image();
 egg2.src = "/Assets/Fall_Dragon_Egg_2.png";
 
-// New: planet/wall images to replace red squares
+// planet/wall images
 const planet1 = new Image();
 planet1.src = "/Assets/Random_Planet_1.png";
 const planet2 = new Image();
@@ -86,7 +92,7 @@ wall2.src = "/Assets/Random_Wall_2.png";
 const wall3 = new Image();
 wall3.src = "/Assets/Random_Wall_3.png";
 
-// Animations object AFTER images are defined
+// Animations object
 const animations = {
   idle: { frames: 1, image: images.idle },
   crouching: { frames: 1, image: images.crouching },
@@ -95,19 +101,17 @@ const animations = {
   facingRight: { frames: 1, image: images.facingRight },
   shooting: { frames: 1, image: images.shooting },
 };
-let currentAnimation = "idle"; // default
+let currentAnimation = "idle"; 
 
 /**********************
  * 5) TIMERS & INTERVALS
  **********************/
-// Survival time increments every second if not paused
 setInterval(() => {
   if (!paused) {
     survivalTime += 1;
   }
 }, 1000);
 
-// Debugging info in console every 2 seconds
 setInterval(() => {
   console.clear();
   console.log("Players:", players);
@@ -130,7 +134,6 @@ socket.on("updateGame", (data) => {
   coins = data.coins || [];
   gameSpeedMultiplier = data.gameSpeedMultiplier || 1;
 
-  // Optionally ensure local player defaults
   let player = players[socket.id];
   if (player) {
     player.x = player.x || canvas.width / 2;
@@ -149,10 +152,28 @@ socket.on("updateCoins", (serverCoins) => {
   coins = serverCoins;
 });
 
-// 6D) Knocked Out -> Reload
-socket.on("knockedOut", (time) => {
-  alert(`💀 Game Over! You survived for ${Math.floor(time / 1000)} seconds.`);
-  window.location.reload();
+// 6D) Knocked Out -> Show End Screen
+socket.on("knockedOut", (serverTime) => {
+  // Pause
+  paused = true;
+
+  // Show end screen overlay
+  let endScreen = document.getElementById("endScreen");
+  let endStats = document.getElementById("endStats");
+  endScreen.style.display = "block";
+
+  // Instead of the huge epoch-based number, 
+  // compute local survival from our own clientStartTime
+  let totalMs = Date.now() - clientStartTime; 
+  let survivedSecs = Math.floor(totalMs / 1000);
+
+  // How many eggs the local player had
+  let eggsCollected = 0;
+  let me = players[socket.id];
+  if (me) eggsCollected = me.coinsCollected || 0;
+
+  // Show survival time + eggs
+  endStats.textContent = `You survived for ${survivedSecs} seconds and collected ${eggsCollected} eggs!`;
 });
 
 /**********************
@@ -161,16 +182,29 @@ socket.on("knockedOut", (time) => {
 // Show Ad & Start
 function showAdAndStart() {
   const nameInput = document.getElementById("username");
-  const user = nameInput ? nameInput.value : "";
+  let user = nameInput ? nameInput.value : "";
+  if (!user && storedName) {
+    user = storedName;
+  }
   if (!user) {
     alert("Please enter a name!");
     return;
   }
-  username = user;
+  storedName = user;
+  localStorage.setItem("playerName", storedName);
+
   document.getElementById("startContainer").style.display = "none";
   canvas.style.display = "block";
   pauseBtn.style.display = "block";
-  socket.emit("newPlayer", username);
+
+  let helpBtn = document.getElementById("helpBtn");
+  if (helpBtn) helpBtn.style.display = "block";
+
+  // 🔴 Reset local times
+  survivalTime = 0;
+  clientStartTime = Date.now();
+
+  socket.emit("newPlayer", storedName);
   animate();
 }
 
@@ -183,7 +217,6 @@ function togglePause() {
 /**********************
  * 8) PLAYER MOVEMENT
  **********************/
-// Keydown
 window.addEventListener("keydown", (e) => {
   if (!e || !e.key) return;
   const key = e.key.toLowerCase();
@@ -196,7 +229,6 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
-// Keyup
 window.addEventListener("keyup", (e) => {
   if (!e || !e.key) return;
   const key = e.key.toLowerCase();
@@ -209,7 +241,6 @@ window.addEventListener("keyup", (e) => {
   }
 });
 
-// Send movement data every frame
 setInterval(() => {
   if (!paused) {
     let dx = 0, dy = 0;
@@ -225,7 +256,7 @@ setInterval(() => {
  * 9) SHOOTING
  **********************/
 canvas.addEventListener("mousedown", (e) => {
-  if (e.button === 0) { // left click
+  if (e.button === 0) { 
     shootBullet(e);
   }
 });
@@ -238,12 +269,10 @@ function shootBullet(event) {
   let mouseX = event.clientX - rect.left;
   let mouseY = event.clientY - rect.top;
 
-  // Calculate dx, dy
   let angle = Math.atan2(mouseY - player.y, mouseX - player.x);
   let dx = Math.cos(angle) * 5; 
   let dy = Math.sin(angle) * 5;
 
-  // Send dx, dy to server
   socket.emit("shoot", { x: player.x, y: player.y, dx, dy });
 }
 
@@ -251,11 +280,10 @@ function shootBullet(event) {
  * 10) DRAW FUNCTIONS
  **********************/
 function draw() {
-  // Clear & draw background
+  // background
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(background, 0, 0, canvas.width, canvas.height);
 
-  // Then draw everything else
   drawMaze();
   drawFood();
   drawBots();
@@ -269,11 +297,7 @@ function draw() {
 function drawMaze() {
   mazeWalls.forEach(wall => {
     if (!wall) return;
-
-    // 🔴 We no longer randomize each frame.
-    // Instead, use the "imageName" assigned by the server:
-    let chosen = wall1; // fallback
-
+    let chosen = wall1; 
     switch (wall.imageName) {
       case "planet1": chosen = planet1; break;
       case "planet2": chosen = planet2; break;
@@ -282,18 +306,14 @@ function drawMaze() {
       case "wall3": chosen = wall3; break;
       default: chosen = wall1; break;
     }
-
-    // Then draw that image at this wall's position & size
     ctx.drawImage(chosen, wall.x, wall.y, wall.width, wall.height);
   });
 }
-
 
 // Food
 function drawFood() {
   foodItems.forEach(food => {
     if (!food.emoji) return;
-    // Instead of an emoji, we can keep it or do other logic
     ctx.font = "20px Arial";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -305,12 +325,6 @@ function drawFood() {
 function drawBots() {
   bots.forEach(bot => {
     if (!bot) return;
-    // 🔴 Use the dragon image instead of a red square
-    // comment out the fill
-    // ctx.fillStyle = "red";
-    // ctx.fillRect(bot.x - bot.size / 2, bot.y - bot.size / 2, bot.size, bot.size);
-
-    // e.g. 50x50 dragons
     ctx.drawImage(dragonImg, bot.x - 25, bot.y - 25, 50, 50);
   });
 }
@@ -323,22 +337,19 @@ function drawBullets() {
                     : bullet.dx > 0 ? bulletImages.right 
                     : bullet.dy < 0 ? bulletImages.up 
                     : bulletImages.down;
-    // bullet smaller e.g. 10x10
     ctx.drawImage(bulletImage, bullet.x - 5, bullet.y - 5, 10, 10);
   });
 }
 
-// Coins -> Replace with Egg images
+// Coins -> Egg images
 function drawCoins() {
   coins.forEach((coin, index) => {
-    // pick an egg image
     let chosenEgg = (index % 2 === 0) ? egg1 : egg2;
-    // e.g. 30 x 40
     ctx.drawImage(chosenEgg, coin.x - 15, coin.y - 20, 30, 40);
   });
 }
 
-// Players (Flipping fix)
+// Players
 function drawPlayers() {
   Object.values(players).forEach(player => {
     if (!player || !player.x || !player.y) return;
@@ -362,7 +373,6 @@ function drawPlayers() {
     ctx.translate(player.x, player.y);
     if (flipX) {
       ctx.scale(-1, 1);
-      // player smaller e.g. 30x30
       ctx.drawImage(playerImage, -15, -15, -30, 30);
     } else {
       ctx.drawImage(playerImage, -15, -15, 30, 30);
@@ -374,7 +384,6 @@ function drawPlayers() {
 // Scoreboard
 function drawScoreboard() {
   let player = players[socket.id] || { coinsCollected: 0 };
-
   ctx.fillStyle = "rgba(0,0,0,0.5)";
   ctx.fillRect(canvas.width - 200, 10, 200, 100);
   ctx.font = "16px Orbitron";
@@ -391,11 +400,52 @@ function animate() {
   requestAnimationFrame(animate);
   if (!paused) {
     draw();
-    // simple frame-based animation
     frameTick++;
     if (frameTick >= frameSpeed) {
       frameTick = 0;
       currentFrame = (currentFrame + 1) % animations[currentAnimation].frames;
     }
+  }
+}
+
+/**********************
+ * 12) END SCREEN & HELP POPUP
+ **********************/
+// "Play Again" => no name prompt => partial reset
+function playAgain() {
+  document.getElementById("endScreen").style.display = "none";
+  // reset local states
+  survivalTime = 0;
+  paused = false;
+  // also reset clientStartTime so new survival time is correct
+  clientStartTime = Date.now();
+
+  // re-emit newPlayer with storedName
+  socket.emit("newPlayer", storedName);
+  // keep the same connection, just re-start game
+  animate(); 
+}
+
+// "Exit" => go to main page but keep name
+function exitGame() {
+  document.getElementById("endScreen").style.display = "none";
+  document.getElementById("startContainer").style.display = "block";
+  let nameInput = document.getElementById("username");
+  nameInput.value = storedName;
+
+  // hide canvas & help/pause
+  canvas.style.display = "none";
+  pauseBtn.style.display = "none";
+  let helpBtn = document.getElementById("helpBtn");
+  if (helpBtn) helpBtn.style.display = "none";
+}
+
+function toggleHelp() {
+  let helpPopup = document.getElementById("helpPopup");
+  if (!helpPopup) return;
+  if (helpPopup.style.display === "block") {
+    helpPopup.style.display = "none";
+  } else {
+    helpPopup.style.display = "block";
   }
 }
