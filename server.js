@@ -36,6 +36,25 @@ function noPlayers() {
   return Object.keys(players).length === 0;
 }
 
+/**********************
+ * HELPER: resetGame() => CLEAR all server data for a fresh start
+ **********************/
+function resetGame() {
+  console.log("🔄 Resetting game data for a fresh start.");
+
+  // Clear arrays
+  bullets = [];
+  bots = [];
+  coins = [];
+  mazeWalls = [];
+  foodItems = [];
+
+  // Reset wave/time/multiplier
+  currentWave = 1;
+  waveTime = 0;
+  gameSpeedMultiplier = 1;
+}
+
 // Generate random positions
 function randomPositionWithinCanvas(size) {
     return Math.random() * (CANVAS_WIDTH - size) + size / 2;
@@ -140,8 +159,13 @@ function checkCollisions() {
           ) {
               console.log(`🚨 Player ${player.username} hit a wall!`);
               io.to(playerID).emit("knockedOut", Date.now());
+              
+              // Remove the player from the game
               delete players[playerID];
               io.emit("updatePlayers", players);
+
+              // 🔴 FULL RESET of game data after knockout
+              resetGame();
           }
       });
 
